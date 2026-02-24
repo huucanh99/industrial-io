@@ -1,20 +1,6 @@
 @echo off
-title Industrial IO Control System
+title Industrial IO (OPC UA)
 
-echo =====================================
-echo   Industrial IO Control System
-echo =====================================
-
-echo.
-echo Checking Node...
-node -v
-echo.
-
-echo Starting server...
-echo.
-
-cd /d %~dp0
-
-node server.js
-
-pause
+start cmd /k "node opcua-server.js"
+timeout /t 2 >nul
+start cmd /k "node server.js"

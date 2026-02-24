@@ -1,25 +1,35 @@
 const express = require("express");
-const path = require("path");
-const { execFile } = require("child_process");
+const {
+  OPCUAClient,
+  AttributeIds,
+  DataType
+} = require("node-opcua");
 
 const app = express();
 app.use(express.json());
 app.use(express.static("public"));
 
-const MODBUS_SCRIPT = path.join(__dirname, "modbus", "set-do.js");
+const OPC_ENDPOINT = "opc.tcp://localhost:4840/UA/IO";
 
-function runSetDO(channel, state) {
-  return new Promise((resolve, reject) => {
-    execFile(
-      process.execPath,
-      [MODBUS_SCRIPT, String(channel), state ? "1" : "0"],
-      { timeout: 10000 },
-      (err, stdout, stderr) => {
-        if (err) return reject(stderr || err.message);
-        resolve(stdout);
+async function writeDO(channel, state) {
+  const client = OPCUAClient.create({ endpointMustExist: false });
+
+  await client.connect(OPC_ENDPOINT);
+  const session = await client.createSession();
+
+  await session.write({
+    nodeId: `ns=1;s=DO${channel}`,
+    attributeId: AttributeIds.Value,
+    value: {
+      value: {
+        dataType: DataType.Boolean,
+        value: state
       }
-    );
+    }
   });
+
+  await session.close();
+  await client.disconnect();
 }
 
 app.post("/api/do/:ch", async (req, res) => {
@@ -28,14 +38,25 @@ app.post("/api/do/:ch", async (req, res) => {
     const state = !!req.body.state;
 
     if (!Number.isInteger(ch) || ch < 1 || ch > 8) {
-      return res.status(400).json({ error: "Channel must be 1-8" });
+      return res.status(400).json({
+        ok: false,
+        error: "Channel must be 1-8"
+      });
     }
 
-    const output = await runSetDO(ch, state);
-    res.json({ success: true, channel: ch, state, output });
+    await writeDO(ch, state);
+
+    res.json({
+      ok: true,
+      channel: ch,
+      state
+    });
 
   } catch (e) {
-    res.status(500).json({ error: e.toString() });
+    res.status(500).json({
+      ok: false,
+      error: e.message
+    });
   }
 });
 
