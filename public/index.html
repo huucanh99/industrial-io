@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>IO Module DO Control</title>
+  <style>
+    body { font-family: system-ui, Arial; padding: 20px; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 12px; max-width: 560px; }
+    button {
+      padding: 14px 12px; border-radius: 12px; border: 1px solid #ddd;
+      background: #f3f3f3; cursor: pointer; font-size: 16px;
+    }
+    button.on { background: #16a34a; color: white; border-color: #16a34a; }
+    button.busy { opacity: 0.6; cursor: not-allowed; }
+    .row { margin-top: 14px; display: flex; gap: 10px; align-items: center; }
+    input { padding: 8px; width: 220px; border-radius: 10px; border: 1px solid #ddd; }
+    .log { margin-top: 14px; background: #111; color: #0f0; padding: 12px; border-radius: 12px; white-space: pre-wrap; min-height: 90px;}
+  </style>
+</head>
+<body>
+  <h2>Modbus RTU IO - DO Control (1..8)</h2>
+
+  <div class="row">
+    <label>BE URL:</label>
+    <input id="baseUrl" value="http://localhost:4000" />
+    <small>(change if needed)</small>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="log" id="log"></div>
+
+<script>
+  const grid = document.getElementById("grid");
+  const logBox = document.getElementById("log");
+  const baseUrlInput = document.getElementById("baseUrl");
+
+  // trạng thái local (FE nhớ ON/OFF)
+  const state = Array.from({ length: 8 }, () => false);
+  const busy = Array.from({ length: 8 }, () => false);
+
+  function log(msg) {
+    logBox.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n` + logBox.textContent;
+  }
+
+  async function setDO(ch, newState) {
+    const baseUrl = baseUrlInput.value.trim().replace(/\/$/, "");
+    const url = `${baseUrl}/api/do/${ch}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ state: newState })
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    return data;
+  }
+
+  function render() {
+    grid.innerHTML = "";
+    for (let i = 1; i <= 8; i++) {
+      const idx = i - 1;
+      const btn = document.createElement("button");
+      btn.textContent = state[idx] ? `DO${i}: ON` : `DO${i}: OFF`;
+      if (state[idx]) btn.classList.add("on");
+      if (busy[idx]) btn.classList.add("busy");
+
+      btn.onclick = async () => {
+        if (busy[idx]) return;
+        busy[idx] = true;
+        render();
+        try {
+          const next = !state[idx];
+          log(`Sending DO${i} -> ${next ? "ON" : "OFF"} ...`);
+          const result = await setDO(i, next);
+          state[idx] = result.state;
+          log(`✅ DO${i} confirmed -> ${result.state ? "ON" : "OFF"}`);
+        } catch (e) {
+          log(`❌ DO${i} failed: ${e.message}`);
+        } finally {
+          busy[idx] = false;
+          render();
+        }
+      };
+
+      grid.appendChild(btn);
+    }
+  }
+
+  render();
+</script>
+</body>
+</html>
